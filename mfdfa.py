@@ -10,7 +10,7 @@ fluctiation analysis.
 
 
 """
-
+from skimage.exposure import equalize_adapthist
 import numpy as np
 import tqdm
 import threading
@@ -314,16 +314,98 @@ def get_h_image(img, q = 2):
     return h_q[0]
 
 class MFDFAImage():
-    def __init__(self, image, q = -10):
+    def __init__(self, image, q = -10, nworkers = 3, windowsize = 2):
+        """
+
+        :param image: The original image to segment.
+        :param q: The value of the multifractal.
+        :param nworkers: Numbers of threads.
+        """
         self.image = image
+        self.nworkers = nworkers
+        self.image_transform = equalize_adapthist( image ,clip_limit=0.02 )
+        self.q = q
+        self.windowsize = windowsize
 
     def run(self):
         """
-        The most importan function in the class.
-        :return:
-        """
+        Hacemos la rutina sobre los hilos.
 
+        :return :
+        """
+        N, M = self.image.shape
+        #step = int(N/self.nworkers)
+
+        mfdfa_image = None
+        mfdfa_image = np.zeros((N,M))
+
+        list_workers = []
+        list_index_lung = []
+
+        for i in range(N):
+            for j in range(M):
+                if self.image[i,j] > 0:
+                    list_index_lung.append( (i,j) )
+
+        n_list = len(list_index_lung)
+        step = int( n_list / self.nworkers )
+
+        for w in range(self.nworkers):
+            list_worker = None
+            if w == self.nworkers - 1:
+                min_w = step * w
+                max_w = n_list
+                list_worker = list_index_lung[min_w:max_w]
+            else:
+                min_w = step * w
+                max_w = step * (w+1)
+                list_worker = list_index_lung[min_w:max_w]
+
+            worker = WorkerMFDFA(orginal_image=self.image_transform,
+                                 final_image=mfdfa_image,
+                                 list_worker=list_worker,
+                                 windowsize=self.windowsize,
+                                 q=self.q,
+                                 id= w)
+            worker.start()
+            list_workers.append(worker)
+
+        for worker in list_workers:
+            worker.join()
+
+        return mfdfa_image
 
 class WorkerMFDFA(threading.Thread):
-    def __init__(self):
+    def __init__(self,orginal_image,final_image, list_worker, id, windowsize = 2,q = -10 ):
+        self.original_image = orginal_image
+        self.final_image = final_image
+        self.list_worker = list_worker
+        self.id = id
+        self.windowsize = windowsize
+        self.q = q
         threading.Thread.__init__(self)
+
+    def run(self):
+        """
+
+        :return:
+        """
+        N,M = self.final_image.shape
+
+        min_x = 0
+        max_x = 0
+        min_y = 0
+        max_y = 0
+
+        for i,j in self.list_worker:
+            min_x = max([i - self.windowsize, 0])
+            max_x = min([i + self.windowsize, N])
+            min_y = max([j - self.windowsize, 0])
+            max_y = min([j + self.windowsize, M])
+
+            h_10 = get_h_q_mfdfa(self.original_image[min_x:max_x, min_y:max_y] + 1,
+                                 min_s=2,
+                                 max_s=3,
+                                 q=self.q)
+
+            self.final_image[i,j] = h_10
