@@ -9,7 +9,7 @@ from time import time
 GENERAL VALUES
 """
 q = -10
-nworkers = 10
+nworkers = 4
 
 
 img = imread('images/0018.jpg')
@@ -25,7 +25,8 @@ mean = np.mean(mean)
 mask_foo = foo.copy() > mean
 lungs = mfdfa.get_lungs(foo)
 good_lungs = mfdfa.get_lungs(mask_foo)
-union_lungs = mfdfa.union_image_by_graph(good_lungs)
+#union_lungs = mfdfa.union_image_by_graph(good_lungs)
+union_lungs = mask_foo.copy()
 t2 = time() - ti
 print(t2)
 

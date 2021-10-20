@@ -103,7 +103,7 @@ def get_cumulative_matrix(img):
 
     return left_matrix @ img @ rigth_matrix
 
-def make_var_least_squared_cum_matrix(cum_matrix,matrix_a = None, inv_matrix = None, vectors = False):
+def make_var_least_squared_cum_matrix(cum_matrix,matrix_a = None, inverse_ls = None, vectors = False):
     """
     A linear regresion of the window
 
@@ -119,6 +119,7 @@ def make_var_least_squared_cum_matrix(cum_matrix,matrix_a = None, inv_matrix = N
     """
 
     N = cum_matrix.shape[0]
+
     inverse_matrix = None
 
     A = []
@@ -132,7 +133,8 @@ def make_var_least_squared_cum_matrix(cum_matrix,matrix_a = None, inv_matrix = N
 
     A = np.array(A)
     y = np.array(y)
-    inverse_matrix = (np.dot(np.linalg.inv(np.dot(A.T, A)), A.T))
+
+    inverse_matrix = inverse_ls
 
     alpha = np.dot( inverse_matrix , y)
     #alpha = np.dot((np.dot(np.linalg.inv(np.dot(A.T,A)),A.T)),y)
@@ -200,7 +202,7 @@ def get_leas_squared_array(x,y):
 ------- BEGIN PRINCIPAL FUNCTIONS
 """
 
-def make_mfdfa_individual_window(window, s, q=2):
+def make_mfdfa_individual_window(window, s, q=2, dict_inverse = None):
     """
 
 
@@ -232,7 +234,11 @@ def make_mfdfa_individual_window(window, s, q=2):
 
             G_mn = get_cumulative_matrix(X_mn)
 
-            y_real, y_pred, G_mn_pred = make_var_least_squared_cum_matrix(G_mn, vectors=True)
+            inverse_least_squared = dict_inverse[s]
+
+            y_real, y_pred, G_mn_pred = make_var_least_squared_cum_matrix(G_mn,
+                                                                          vectors=True,
+                                                                          inverse_ls = inverse_least_squared)
 
             y_mn = y_real - y_pred
 
@@ -245,7 +251,7 @@ def make_mfdfa_individual_window(window, s, q=2):
     return F_q
 
 
-def get_h_q_mfdfa(window, min_s = 6, max_s = None, q = 2):
+def get_h_q_mfdfa(window, min_s = 6, max_s = None, q = 2, dict_inverse = None):
     """
     Esta es la que debemos paralelizar
 
@@ -277,7 +283,10 @@ def get_h_q_mfdfa(window, min_s = 6, max_s = None, q = 2):
 
     for s in s_ls:
         #print(s)
-        h = make_mfdfa_individual_window(window,s=s, q = 2)
+        h = make_mfdfa_individual_window(window,
+                                         s=s,
+                                         q = 2,
+                                         dict_inverse = dict_inverse)
         y_ls.append(h)
 
 
@@ -479,6 +488,17 @@ class MFDFAImage():
         self.q = q
         self.windowsize = windowsize
         self.inversematrix = None
+        self.dict_inverses = {}
+
+        for s in range(2, 4):
+            A = []
+            for i in range(s):
+                for j in range(s):
+                    renglon = [i + 1, j + 1, 1]
+                    A.append(renglon)
+            A = np.array(A)
+            A = (np.dot(np.linalg.inv(np.dot(A.T, A)), A.T))
+            self.dict_inverses[s] = A
 
     def run(self):
         """
@@ -520,7 +540,7 @@ class MFDFAImage():
                                  windowsize=self.windowsize,
                                  q=self.q,
                                  id= w,
-                                 inversematrix = self.inversematrix)
+                                 inversematrix = self.dict_inverses)
             worker.start()
             list_workers.append(worker)
 
@@ -562,7 +582,8 @@ class WorkerMFDFA(threading.Thread):
             h = get_h_q_mfdfa(self.original_image[min_x:max_x, min_y:max_y] + 1,
                                  min_s=2,
                                  max_s=3,
-                                 q=self.q)
+                                 q=self.q,
+                                 dict_inverse = self.inversematrix)
 
             self.final_image[i,j] = h
 
