@@ -14,6 +14,9 @@ from skimage.exposure import equalize_adapthist
 import numpy as np
 import tqdm
 import threading
+import networkx as nx
+
+#inversa = None
 
 
 """
@@ -100,7 +103,7 @@ def get_cumulative_matrix(img):
 
     return left_matrix @ img @ rigth_matrix
 
-def make_var_least_squared_cum_matrix(cum_matrix, vectors = False):
+def make_var_least_squared_cum_matrix(cum_matrix,matrix_a = None, inv_matrix = None, vectors = False):
     """
     A linear regresion of the window
 
@@ -116,19 +119,23 @@ def make_var_least_squared_cum_matrix(cum_matrix, vectors = False):
     """
 
     N = cum_matrix.shape[0]
+    inverse_matrix = None
 
     A = []
     y = []
+
     for i in range(N):
         for j in range(N):
-            renglon = [i+1,j+1,1]
+            renglon = [i + 1, j + 1, 1]
             A.append(renglon)
-            y.append([cum_matrix[i,j]])
+            y.append([cum_matrix[i, j]])
 
     A = np.array(A)
     y = np.array(y)
-    #print(A,y)
-    alpha = np.dot((np.dot(np.linalg.inv(np.dot(A.T,A)),A.T)),y)
+    inverse_matrix = (np.dot(np.linalg.inv(np.dot(A.T, A)), A.T))
+
+    alpha = np.dot( inverse_matrix , y)
+    #alpha = np.dot((np.dot(np.linalg.inv(np.dot(A.T,A)),A.T)),y)
 
     y_pred = A @ alpha
     y_real = y
@@ -235,8 +242,6 @@ def make_mfdfa_individual_window(window, s, q=2):
 
     F_q = np.mean(np.array(F_list_q)**(q/2))**(1/q)
 
-    #print(F_q)
-
     return F_q
 
 
@@ -275,6 +280,7 @@ def get_h_q_mfdfa(window, min_s = 6, max_s = None, q = 2):
         h = make_mfdfa_individual_window(window,s=s, q = 2)
         y_ls.append(h)
 
+
     h_q = get_leas_squared_array(np.log(s_ls), np.log(y_ls))
 
     return h_q[0]
@@ -284,6 +290,152 @@ def get_h_q_mfdfa(window, min_s = 6, max_s = None, q = 2):
 #"""
 #------- END PRINCIPAL FUNCTIONS
 #"""
+
+"""
+------------------- ------------------- ------------------- ------------------- 
+                            BEGIN - TRANFORM IMAGES 
+------------------- ------------------- ------------------- -------------------
+"""
+
+
+def make_graph_segmentation(binaryimg, k=1, lmd=3.5):
+    N, M = binaryimg.shape
+    foo = binaryimg.copy()
+    s, t = N * M, N * M + 1
+    G = nx.DiGraph()
+    # Aqui generamos la red
+    for idx, row in enumerate(binaryimg):
+        for jdx, pixel in enumerate(row):
+            # Polinomio de redireccionamiento
+            px_id = (idx * len(row)) + jdx
+
+            # Están arriba
+            if idx == 0:  # or idx == N-1:
+                # equina izquierda
+                if jdx == 0:  # or jdx == M-1:
+                    source = px_id
+                    # Derecha
+                    target = (idx * len(row)) + (jdx + 1)
+                    G.add_edge(source, target, weight=k)
+                    # Abajo
+                    target = ((idx + 1) * len(row)) + jdx
+                    G.add_edge(source, target, weight=k)
+                # esquina Derecha
+                elif jdx == M - 1:
+                    source = px_id
+                    # Izquierda
+                    target = (idx * len(row)) + (jdx - 1)
+                    G.add_edge(source, target, weight=k)
+                    # Abajo
+                    target = ((idx + 1) * len(row)) + jdx
+                    G.add_edge(source, target, weight=k)
+                # En medio
+                else:
+                    source = px_id
+                    # Derecha
+                    target = (idx * len(row)) + (jdx + 1)
+                    G.add_edge(source, target, weight=k)
+                    # Izquierda
+                    target = (idx * len(row)) + (jdx - 1)
+                    G.add_edge(source, target, weight=k)
+                    # Abajo
+                    target = ((idx + 1) * len(row)) + jdx
+                    G.add_edge(source, target, weight=k)
+            # Hasta abajo
+            elif idx == N - 1:
+                # equina izquierda
+                if jdx == 0:  # or jdx == M-1:
+                    source = px_id
+                    # Derecha
+                    target = (idx * len(row)) + (jdx + 1)
+                    G.add_edge(source, target, weight=k)
+                    # Arriba
+                    target = ((idx - 1) * len(row)) + jdx
+                    G.add_edge(source, target, weight=k)
+                # esquina Derecha
+                elif jdx == M - 1:
+                    source = px_id
+                    # Izquierda
+                    target = (idx * len(row)) + (jdx - 1)
+                    G.add_edge(source, target, weight=k)
+                    # Arriba
+                    target = ((idx - 1) * len(row)) + jdx
+                    G.add_edge(source, target, weight=k)
+                # En medio
+                else:
+                    source = px_id
+                    # Derecha
+                    target = (idx * len(row)) + (jdx + 1)
+                    G.add_edge(source, target, weight=k)
+                    # Izquierda
+                    target = (idx * len(row)) + (jdx - 1)
+                    G.add_edge(source, target, weight=k)
+                    # Arriba
+                    target = ((idx - 1) * len(row)) + jdx
+                    G.add_edge(source, target, weight=k)
+            # En medio
+            else:
+                source = px_id
+
+                # Derecha
+                target = (idx * len(row)) + (jdx + 1)
+                G.add_edge(source, target, weight=k)
+
+                # Izquierda
+                target = (idx * len(row)) + (jdx - 1)
+                G.add_edge(source, target, weight=k)
+
+                # Arriba
+                target = ((idx - 1) * len(row)) + jdx
+                G.add_edge(source, target, weight=k)
+
+                # Abajo
+                target = ((idx + 1) * len(row)) + jdx
+                G.add_edge(source, target, weight=k)
+
+            # Asociamos con s,t
+
+            if pixel > 0:
+                source = s
+                target = px_id
+                G.add_edge(source, target, weight=lmd)
+            else:
+                source = px_id
+                target = t
+                G.add_edge(source, target, weight=lmd)
+    return G, s, t
+
+def get_lungs(fooimg):
+
+    col_index = np.where(np.sum(fooimg, axis=0) != 0)[0]
+    row_index = np.where(np.sum(fooimg, axis=1) != 0)[0]
+
+    min_row = row_index[0]
+    max_row = row_index[-1]
+
+    min_col = col_index[0]
+    max_col = col_index[-1]
+
+    return fooimg[min_row:max_row, min_col:max_col]
+
+def union_image_by_graph(lung_image):
+    k = 1
+    lmd = 2.5
+    binaryimg = lung_image.copy()
+    N, M = binaryimg.shape
+    G, s, t = make_graph_segmentation(binaryimg, k=k, lmd=lmd)
+    cvalue, partition = nx.minimum_cut(G, _s=s, _t=t, capacity='weight')
+    real_pixels = np.array(list(partition[0]))
+    array_pixels = np.arange(s)
+    segment_img = np.isin(array_pixels, real_pixels).reshape(N, M)
+    return segment_img
+
+
+"""
+------------------- ------------------- ------------------- ------------------- 
+                            BEGIN - TRANFORM IMAGES 
+------------------- ------------------- ------------------- -------------------
+"""
 
 def get_h_image(img, q = 2):
     """
@@ -326,6 +478,7 @@ class MFDFAImage():
         self.image_transform = equalize_adapthist( image ,clip_limit=0.02 )
         self.q = q
         self.windowsize = windowsize
+        self.inversematrix = None
 
     def run(self):
         """
@@ -366,7 +519,8 @@ class MFDFAImage():
                                  list_worker=list_worker,
                                  windowsize=self.windowsize,
                                  q=self.q,
-                                 id= w)
+                                 id= w,
+                                 inversematrix = self.inversematrix)
             worker.start()
             list_workers.append(worker)
 
@@ -376,14 +530,16 @@ class MFDFAImage():
         return mfdfa_image
 
 class WorkerMFDFA(threading.Thread):
-    def __init__(self,orginal_image,final_image, list_worker, id, windowsize = 2,q = -10 ):
+    def __init__(self,orginal_image,final_image, list_worker, id, windowsize = 2,q = -10,inversematrix = None ):
         self.original_image = orginal_image
         self.final_image = final_image
         self.list_worker = list_worker
         self.id = id
         self.windowsize = windowsize
         self.q = q
+        self.inversematrix = inversematrix
         threading.Thread.__init__(self)
+
 
     def run(self):
         """
@@ -403,9 +559,10 @@ class WorkerMFDFA(threading.Thread):
             min_y = max([j - self.windowsize, 0])
             max_y = min([j + self.windowsize, M])
 
-            h_10 = get_h_q_mfdfa(self.original_image[min_x:max_x, min_y:max_y] + 1,
+            h = get_h_q_mfdfa(self.original_image[min_x:max_x, min_y:max_y] + 1,
                                  min_s=2,
                                  max_s=3,
                                  q=self.q)
 
-            self.final_image[i,j] = h_10
+            self.final_image[i,j] = h
+
