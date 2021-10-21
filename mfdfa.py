@@ -18,7 +18,11 @@ import networkx as nx
 
 #inversa = None
 
-
+s_ls = [2,3]
+s_ls = np.array(np.log(s_ls)).reshape((len(np.log(s_ls)),1))
+A_sls = np.concatenate( [s_ls,
+                         np.ones( (np.log(s_ls).shape[0], 1))], axis=1)
+inv_Asls = (np.dot(np.linalg.inv(np.dot(A_sls.T, A_sls)), A_sls.T))
 """
 ------- BEGIN MODULAR FUNCTIONS
 """
@@ -289,8 +293,14 @@ def get_h_q_mfdfa(window, min_s = 6, max_s = None, q = 2, dict_inverse = None):
                                          dict_inverse = dict_inverse)
         y_ls.append(h)
 
+    #x = np.array(x).reshape((len(x), 1))
+    y = np.array(np.log(y_ls)).reshape((len(np.log(y_ls)), 1))
 
-    h_q = get_leas_squared_array(np.log(s_ls), np.log(y_ls))
+    #A = np.concatenate([x, np.ones((x.shape[0], 1))], axis=1)
+
+    h = np.dot( inv_Asls , y)
+    h_q = h.ravel()
+    #h_q = get_leas_squared_array(np.log(s_ls), np.log(y_ls))
 
     return h_q[0]
 
